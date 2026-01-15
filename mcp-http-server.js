@@ -14,10 +14,6 @@ function startMCPProcess() {
     env: process.env,
   });
   
-  mcpProcess.stdout.on('data', (data) => {
-    console.log('[MCP stdout]', data.toString());
-  });
-  
   mcpProcess.stderr.on('data', (data) => {
     const msg = data.toString();
     console.error('[MCP stderr]', msg);
@@ -34,7 +30,7 @@ function startMCPProcess() {
 
 startMCPProcess();
 
-// Processar requisições MCP
+// Processar requisições MCP via stdin/stdout
 async function processMCPRequest(request) {
   return new Promise((resolve, reject) => {
     if (!mcpReady) {
@@ -44,18 +40,27 @@ async function processMCPRequest(request) {
 
     let responseData = '';
     const timeout = setTimeout(() => {
+      clearTimeout(timeout);
+      mcpProcess.stdout.removeListener('data', dataHandler);
       reject(new Error('MCP request timeout'));
-    }, 30000);
+    }, 10000);
 
     const dataHandler = (data) => {
       responseData += data.toString();
-      try {
-        const response = JSON.parse(responseData);
-        clearTimeout(timeout);
-        mcpProcess.stdout.removeListener('data', dataHandler);
-        resolve(response);
-      } catch (e) {
-        // Ainda não é JSON completo, continua acumulando
+      const lines = responseData.split('\n').filter(l => l.trim());
+      
+      for (const line of lines) {
+        try {
+          const response = JSON.parse(line);
+          if (response.id === request.id) {
+            clearTimeout(timeout);
+            mcpProcess.stdout.removeListener('data', dataHandler);
+            resolve(response);
+            return;
+          }
+        } catch (e) {
+          // Linha não é JSON válido, ignora
+        }
       }
     };
 
@@ -71,7 +76,13 @@ app.post('/mcp', async (req, res) => {
     
     const { method, params, id } = req.body;
     
-    // Responder initialize
+    // Notificações não precisam de resposta
+    if (method.startsWith('notifications/')) {
+      res.status(204).send();
+      return;
+    }
+    
+    // Responder initialize diretamente
     if (method === 'initialize') {
       res.json({
         jsonrpc: '2.0',

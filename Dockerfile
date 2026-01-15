@@ -11,12 +11,8 @@ RUN npm run build
 ENV DATAFORSEO_LOGIN=""
 ENV DATAFORSEO_PASSWORD=""
 
-# Criar script de inicialização que mantém o processo rodando
-RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'tail -f /dev/null & npm start' >> /app/start.sh && \
-    chmod +x /app/start.sh
-
-# Expor porta 3000 caso seja necessário
+# Expor porta 3000 para acesso interno
 EXPOSE 3000
 
-CMD ["/app/start.sh"]
+# Manter container rodando usando tail -f em foreground
+CMD sh -c "npm start & tail -f /dev/null"
